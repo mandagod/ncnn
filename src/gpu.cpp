@@ -16,7 +16,6 @@
 
 #if NCNN_VULKAN
 
-#include <algorithm>
 #include <math.h>
 #include <string.h>
 #include <vulkan/vulkan.h>
@@ -509,7 +508,7 @@ int create_gpu_instance()
     applicationInfo.pApplicationName = "ncnn";
     applicationInfo.applicationVersion = 0;
     applicationInfo.pEngineName = "ncnn";
-    applicationInfo.engineVersion = 20200413;
+    applicationInfo.engineVersion = 20200727;
     applicationInfo.apiVersion = VK_MAKE_VERSION(1, 0, 0);
 
     VkInstanceCreateInfo instanceCreateInfo;
@@ -687,6 +686,7 @@ int create_gpu_instance()
         gpu_info.driver_version = physicalDeviceProperties.driverVersion;
         gpu_info.vendor_id = physicalDeviceProperties.vendorID;
         gpu_info.device_id = physicalDeviceProperties.deviceID;
+        gpu_info.device_name = std::string(physicalDeviceProperties.deviceName);
         memcpy(gpu_info.pipeline_cache_uuid, physicalDeviceProperties.pipelineCacheUUID, VK_UUID_SIZE);
 
         if (physicalDeviceProperties.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU)
@@ -2337,6 +2337,11 @@ const ncnn::Packing_vulkan* VulkanDevice::get_utility_operator(int storage_type_
         return 0;
     }
 
+    // fp16/int8 arithmetic are not necessary for packing
+    // and may conflict with storage options
+    opt.use_fp16_arithmetic = false;
+    opt.use_int8_arithmetic = false;
+
     // enable pack8 for pack8to1/pack8to4
     opt.use_shader_pack8 = true;
 
@@ -2368,6 +2373,8 @@ void VulkanDevice::destroy_utility_operator()
 {
     Option opt;
     opt.use_vulkan_compute = true;
+    opt.use_fp16_arithmetic = false;
+    opt.use_int8_arithmetic = false;
     opt.pipeline_cache = 0;
 
     // from buffer | image
@@ -2553,17 +2560,8 @@ static TBuiltInResource get_default_TBuiltInResource()
     return resource;
 }
 
-int compile_spirv_module(int shader_type_index, const Option& opt, std::vector<uint32_t>& spirv)
+int compile_spirv_module(const char* comp_data, int comp_data_size, const Option& opt, std::vector<uint32_t>& spirv)
 {
-    if (shader_type_index < 0 || shader_type_index >= layer_shader_registry_entry_count)
-    {
-        NCNN_LOGE("no such shader module %d", shader_type_index);
-        return -1;
-    }
-
-    const char* comp_data = layer_shader_registry[shader_type_index].comp_data;
-    int comp_data_size = layer_shader_registry[shader_type_index].comp_data_size;
-
     std::vector<std::pair<const char*, const char*> > custom_defines;
 
     if (opt.use_fp16_storage)
@@ -2910,6 +2908,16 @@ int compile_spirv_module(int shader_type_index, const Option& opt, std::vector<u
         custom_defines.push_back(std::make_pair("NCNN_fp16_arithmetic", "1"));
     }
 
+    if (opt.use_int8_storage)
+    {
+        custom_defines.push_back(std::make_pair("NCNN_int8_storage", "1"));
+    }
+
+    if (opt.use_int8_arithmetic)
+    {
+        custom_defines.push_back(std::make_pair("NCNN_int8_arithmetic", "1"));
+    }
+
     if (opt.use_image_storage)
     {
         custom_defines.push_back(std::make_pair("NCNN_image_shader", "1"));
@@ -2965,6 +2973,20 @@ int compile_spirv_module(int shader_type_index, const Option& opt, std::vector<u
     }
 
     return compile_success ? 0 : -1;
+}
+
+int compile_spirv_module(int shader_type_index, const Option& opt, std::vector<uint32_t>& spirv)
+{
+    if (shader_type_index < 0 || shader_type_index >= layer_shader_registry_entry_count)
+    {
+        NCNN_LOGE("no such shader module %d", shader_type_index);
+        return -1;
+    }
+
+    const char* comp_data = layer_shader_registry[shader_type_index].comp_data;
+    int comp_data_size = layer_shader_registry[shader_type_index].comp_data_size;
+
+    return compile_spirv_module(comp_data, comp_data_size, opt, spirv);
 }
 #endif
 

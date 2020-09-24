@@ -19,8 +19,6 @@
 #include "option.h"
 #include "pipeline.h"
 
-#include <algorithm>
-
 namespace ncnn {
 
 VkCompute::VkCompute(const VulkanDevice* _vkdev)
@@ -2214,7 +2212,7 @@ int VkCompute::submit_and_wait()
 
     // wait
     {
-        VkResult ret = vkWaitForFences(vkdev->vkdevice(), 1, &compute_command_fence, VK_TRUE, UINT64_MAX);
+        VkResult ret = vkWaitForFences(vkdev->vkdevice(), 1, &compute_command_fence, VK_TRUE, (uint64_t)-1);
         if (ret != VK_SUCCESS)
         {
             NCNN_LOGE("vkWaitForFences failed %d", ret);
@@ -2515,7 +2513,7 @@ void VkTransfer::record_upload(const Mat& src, VkMat& dst, const Option& opt, bo
     //     NCNN_LOGE("record_upload src = %d | %d %d %d @ %d", src.dims, src.w, src.h, src.c, src.elempack);
 
     // NOTE keep the hack here ?
-    if (src.elemsize == src.elempack * 4u)
+    if (src.elembits() == 32)
     {
         if (opt.use_fp16_storage || (opt.use_fp16_packed && src.elempack % 4 == 0))
         {
@@ -2990,7 +2988,7 @@ int VkTransfer::submit_and_wait()
     // wait
     if (vkdev->info.unified_compute_transfer_queue)
     {
-        VkResult ret = vkWaitForFences(vkdev->vkdevice(), 1, &compute_command_fence, VK_TRUE, UINT64_MAX);
+        VkResult ret = vkWaitForFences(vkdev->vkdevice(), 1, &compute_command_fence, VK_TRUE, (uint64_t)-1);
         if (ret != VK_SUCCESS)
         {
             NCNN_LOGE("vkWaitForFences failed %d", ret);
@@ -3001,7 +2999,7 @@ int VkTransfer::submit_and_wait()
     {
         VkFence fences[2] = {upload_command_fence, compute_command_fence};
 
-        VkResult ret = vkWaitForFences(vkdev->vkdevice(), 2, fences, VK_TRUE, UINT64_MAX);
+        VkResult ret = vkWaitForFences(vkdev->vkdevice(), 2, fences, VK_TRUE, (uint64_t)-1);
         if (ret != VK_SUCCESS)
         {
             NCNN_LOGE("vkWaitForFences failed %d", ret);
